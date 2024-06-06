@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Translation</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        #status.loading { color: blue; }
+        #status.error { color: red; }
+        .history-item { border-bottom: 1px solid #ccc; padding: 5px 0; }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+        <h1 class="text-2xl font-bold mb-6">Translate Text</h1>
+        <div class="mb-4">
+            <label for="sourceLang" class="block text-sm font-medium text-gray-700">Source Language:</label>
+            <select id="sourceLang" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <option value="Italian">Italian</option>
+                <option value="English">English</option>
+                <option value="Spanish">Spanish</option>
+                <option value="French">French</option>
+                <option value="Tagalog">Tagalog</option>
+            </select>
+        </div>
+        <div class="mb-4">
+            <label for="targetLang" class="block text-sm font-medium text-gray-700">Target Language:</label>
+            <select id="targetLang" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <option value="Greek">Greek</option>
+                <option value="English">English</option>
+                <option value="Spanish">Spanish</option>
+                <option value="French">French</option>
+                <option value="Tagalog">Tagalog</option>
+            </select>
+        </div>
+        <div class="mb-4">
+            <label for="tone" class="block text-sm font-medium text-gray-700">Tone:</label>
+            <select id="tone" class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <option value="formal">Formal</option>
+                <option value="informal">Informal</option>
+                <option value="professional">Professional</option>
+                <option value="friendly">Friendly</option>
+            </select>
+        </div>
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700">Mode:</label>
+            <div class="mt-1">
+                <label class="inline-flex items-center">
+                    <input type="radio" name="mode" value="live" checked class="form-radio text-indigo-600" id="liveMode">
+                    <span class="ml-2">Live Mode</span>
+                </label>
+                <label class="inline-flex items-center ml-6">
+                    <input type="radio" name="mode" value="history" class="form-radio text-indigo-600" id="historyMode">
+                    <span class="ml-2">With History Mode</span>
+                </label>
+            </div>
+        </div>
+        <button id="record" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Record</button>
+        <p id="status" class="mt-4 text-gray-700">Click "Record" and start speaking...</p>
+        <p id="recognized-text" class="mt-2 text-gray-700"></p>
+        <p id="result" class="mt-2 text-lg font-semibold text-gray-700"></p>
+        <h2 class="text-xl font-bold mt-6">Translation History</h2>
+        <div id="history" class="mt-2"></div>
+    </div>
+
+    <script>
+        const recordButton = document.getElementById('record');
+        const status = document.getElementById('status');
+        const recognizedText = document.getElementById('recognized-text');
+        const result = document.getElementById('result');
+        const history = document.getElementById('history');
+        const sourceLang = document.getElementById('sourceLang');
+        const targetLang = document.getElementById('targetLang');
+        const tone = document.getElementById('tone');
+        const liveMode = document.getElementById('liveMode');
+        const historyMode = document.getElementById('historyMode');
+
+        let recognition;
+        let isRecording = false;
+
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                status.textContent = 'Recording...';
+                status.classList.add('loading');
+                status.classList.remove('error');
+            };
+
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                recognizedText.textContent = `Recognized text: ${text}`;
+                sendTextForTranslation(text);
+            };
+
+            recognition.onerror = (event) => {
+                status.textContent = `Error occurred in recognition: ${event.error}`;
+                status.classList.add('error');
+                status.classList.remove('loading');
+            };
+
+            recognition.onend = () => {
+                if (isRecording) {
+                    recognition.start();
+                } else {
+                    status.textContent = 'Recording stopped.';
+                    status.classList.remove('loading');
+                    status.classList.remove('error');
+                }
+            };
+        } else {
+            status.textContent = 'Speech recognition not supported in this browser.';
+            status.classList.add('error');
+        }
+
+        recordButton.addEventListener('click', () => {
+            recognition.lang = getLanguageCode(sourceLang.value);
+            if (isRecording) {
+                isRecording = false;
+                recognition.stop();
+                recordButton.textContent = 'Record';
+            } else {
+                isRecording = true;
+                recognition.start();
+                recordButton.textContent = 'Stop';
+            }
+        });
+
+        async function sendTextForTranslation(text) {
+            status.textContent = 'Translating...';
+            status.classList.add('loading');
+            status.classList.remove('error');
+            const response = await fetch('/translate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text,
+                    sourceLang: sourceLang.value,
+                    targetLang: targetLang.value,
+                    tone: tone.value
+                }),
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                result.textContent = `Translated Text: ${data.translation}`;
+                status.textContent = 'Translation complete.';
+                status.classList.remove('loading');
+                status.classList.remove('error');
+                if (historyMode.checked) {
+                    addToHistory(text, data.translation, sourceLang.value, targetLang.value, tone.value);
+                }
+            } else {
+                result.textContent = `Error: ${data.error}`;
+                status.textContent = 'Translation failed.';
+                status.classList.add('error');
+                status.classList.remove('loading');
+            }
+        }
+
+        function getLanguageCode(language) {
+            const languageCodes = {
+                'Italian': 'it-IT',
+                'English': 'en-US',
+                'Spanish': 'es-ES',
+                'French': 'fr-FR',
+                'Tagalog': 'tl-PH'
+            };
+            return languageCodes[language] || 'en-US';
+        }
+
+        function addToHistory(original, translated, source, target, tone) {
+            const historyItem = document.createElement('div');
+            historyItem.className = 'history-item';
+            historyItem.innerHTML = `
+                <p><strong>Source (${source}, ${tone}):</strong> ${original}</p>
+                <p><strong>Target (${target}):</strong> ${translated}</p>
+            `;
+            history.appendChild(historyItem);
+        }
+    </script>
+</body>
+</html>
